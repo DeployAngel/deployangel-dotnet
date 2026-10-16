@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-10-16)
 
 - First release: the DeployAngel agent for ASP.NET Core and worker services
   (`DeployAngel`), Hangfire jobs and recurring jobs (`DeployAngel.Hangfire`),
