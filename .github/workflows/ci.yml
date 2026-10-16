@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  # The libraries target net8.0 and are tested on the newest runtime; the
+  # .NET 8 SDK also builds them, so nothing newer slips in.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Build the libraries with the .NET 8 SDK
+        run: |
+          echo '{"sdk":{"version":"8.0.100","rollForward":"latestFeature"}}' > global.json
+          dotnet build src/DeployAngel.Hangfire -c Release
+          dotnet build src/DeployAngel.Tool -c Release
+          rm global.json
+
+      - name: Run tests
+        run: dotnet test -c Release
+
+      - name: Check overhead
+        run: dotnet run -c Release --project bench/Overhead
+
+      - name: Pack
+        run: dotnet pack -c Release -o packages

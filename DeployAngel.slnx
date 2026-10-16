@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/Overhead/Overhead.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DeployAngel.Hangfire/DeployAngel.Hangfire.csproj" />
+    <Project Path="src/DeployAngel.Tool/DeployAngel.Tool.csproj" />
+    <Project Path="src/DeployAngel/DeployAngel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DeployAngel.Tests/DeployAngel.Tests.csproj" />
+    <Project Path="tests/DeployAngel.Tool.Tests/DeployAngel.Tool.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,25 @@
+<Project>
+  <!--
+    Records the repository root in the app's assembly, so DeployAngel can
+    make the source paths in its debug symbols relative to the repository:
+    the nearest directory with a .git (up to 4 levels above the project),
+    else the solution's directory, else the nearest with a .gitignore, else
+    the project's. Set DeployAngelSourceRoot to choose it yourself.
+  -->
+  <PropertyGroup Condition="'$(DeployAngelSourceRoot)' == ''">
+    <_DeployAngelDir>$(MSBuildProjectDirectory)</_DeployAngelDir>
+    <DeployAngelSourceRoot Condition="Exists('$(_DeployAngelDir)/.git')">$(_DeployAngelDir)</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and Exists('$(_DeployAngelDir)/../.git')">$([System.IO.Path]::GetFullPath('$(_DeployAngelDir)/..'))</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and Exists('$(_DeployAngelDir)/../../.git')">$([System.IO.Path]::GetFullPath('$(_DeployAngelDir)/../..'))</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and Exists('$(_DeployAngelDir)/../../../.git')">$([System.IO.Path]::GetFullPath('$(_DeployAngelDir)/../../..'))</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and Exists('$(_DeployAngelDir)/../../../../.git')">$([System.IO.Path]::GetFullPath('$(_DeployAngelDir)/../../../..'))</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and '$(SolutionDir)' != '' and '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</DeployAngelSourceRoot>
+    <_DeployAngelIgnoreDir>$([MSBuild]::GetDirectoryNameOfFileAbove('$(_DeployAngelDir)', '.gitignore'))</_DeployAngelIgnoreDir>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == '' and '$(_DeployAngelIgnoreDir)' != ''">$(_DeployAngelIgnoreDir)</DeployAngelSourceRoot>
+    <DeployAngelSourceRoot Condition="'$(DeployAngelSourceRoot)' == ''">$(_DeployAngelDir)</DeployAngelSourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(DeployAngelRecordSourceRoot)' != 'false'">
+    <AssemblyMetadata Include="DeployAngel.SourceRoot" Value="$([System.IO.Path]::GetFullPath('$(DeployAngelSourceRoot)'))" />
+  </ItemGroup>
+</Project>

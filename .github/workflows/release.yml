@@ -1,0 +1,122 @@
+name: Release
+
+# Pushing a version tag (v0.1.0) packs the three packages, publishes them to
+# nuget.org once a maintainer approves the nuget environment, and then
+# creates a GitHub release whose notes are that version's section of
+# CHANGELOG.md.
+#
+# nuget.org trusts this workflow directly (trusted publishing), so there's no
+# long-lived API key: NuGet/login trades the workflow's OIDC token for a
+# short-lived key. The trusted publishing policy on nuget.org names this
+# repository and release.yml; NUGET_USER is the nuget.org account it belongs to.
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Check the tag, version, and CHANGELOG agree
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Directory.Build.props)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match version $version in Directory.Build.props."
+            exit 1
+          fi
+          if ! grep -q "^## $version " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $version."
+            exit 1
+          fi
+
+      - name: Test and pack
+        run: |
+          dotnet test -c Release
+          dotnet pack -c Release -o packages
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: packages/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/DeployAngel/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: packages/
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Log in to nuget.org
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish to nuget.org
+        run: dotnet nuget push "packages/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: packages/
+
+      - name: Create release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "A release for $TAG already exists."
+            exit 0
+          fi
+
+          # The lines under "## <version> (date)", up to the next heading,
+          # without leading or trailing blank lines.
+          awk -v v="$version" '
+            index($0, "## " v " ") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { lines[++n] = $0 }
+            END {
+              first = 1; while (first <= n && lines[first] == "") first++
+              last = n;  while (last >= first && lines[last] == "") last--
+              for (i = first; i <= last; i++) print lines[i]
+            }
+          ' CHANGELOG.md > notes.md
+
+          gh release create "$TAG" packages/* --title "DeployAngel (.NET) $version" --notes-file notes.md

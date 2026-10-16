@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>DeployAngel</PackageId>
+    <Description>DeployAngel agent for ASP.NET Core: verifies every deploy from aggregated HTTP, job, and exception telemetry.</Description>
+  </PropertyGroup>
+
+  <!-- No package dependencies: the agent uses the .NET and ASP.NET Core
+       shared frameworks only. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeployAngel.Tests" />
+    <InternalsVisibleTo Include="Overhead" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="build/DeployAngel.targets" Pack="true" PackagePath="build/;buildTransitive/" />
+  </ItemGroup>
+
+</Project>

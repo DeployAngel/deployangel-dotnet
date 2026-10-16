@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <PackageId>DeployAngel.Tool</PackageId>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>deployangel</ToolCommandName>
+    <AssemblyName>deployangel</AssemblyName>
+    <RootNamespace>DeployAngel.Tool</RootNamespace>
+    <Description>The deployangel command and MCP server: check a deploy's verdict, register deploys, and give coding agents DeployAngel's tools.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeployAngel.Tool.Tests" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
