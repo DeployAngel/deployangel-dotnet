@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The instructions `deployangel install agents` writes to `AGENTS.md` now tell
+  coding agents to check recent releases and late regressions at the start
+  of a session, and to read `fix_check` in the verdict after deploying a fix
+  for a failed release. Run it again to update them.
+
 ## 0.1.0 (2026-10-16)
 
 - First release: the DeployAngel agent for ASP.NET Core and worker services
