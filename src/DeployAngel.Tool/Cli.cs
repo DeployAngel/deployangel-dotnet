@@ -407,9 +407,18 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
         return token is not null ? new ApiClient(token, Endpoint()) : null;
     }
 
+    // Without a token the server still starts, and each tool says how to set
+    // one: many agents only report a server that won't start as "failed to
+    // start", with no reason.
     private int Mcp()
     {
-        new McpServer(Client(), _stdin, _stdout, _stderr, _sleeper, _clock, GitHead).Run();
+        var tokenMissing = _client is null && string.IsNullOrEmpty(Or(Env("DEPLOYANGEL_API_TOKEN"), JsonValues.StringOf(Saved()["api_token"])));
+        if (tokenMissing)
+        {
+            _stderr.WriteLine("deployangel mcp: no API token yet; each tool will say how to set one.");
+            _client = new ApiClient(null, Endpoint(), requireToken: false);
+        }
+        new McpServer(Client(), _stdin, _stdout, _stderr, _sleeper, _clock, GitHead, tokenMissing).Run();
         return 0;
     }
 

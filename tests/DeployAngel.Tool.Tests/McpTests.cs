@@ -140,4 +140,32 @@ public sealed class McpTests
         Assert.Equal(-32603, (int)response["error"]!["code"]!);
         Assert.StartsWith("deployangel mcp: ArgumentOutOfRangeException:", errors.ToString());
     }
+
+    // Agents only report a server that won't start as "failed to start", so
+    // without a token it starts anyway and each tool says how to set one.
+    [Fact]
+    public void StartsWithoutATokenFromTheCommandLineAndEachToolSaysHowToSetOne()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        var requests = string.Join("\n", new[]
+        {
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}",
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
+            "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"get_verification\",\"arguments\":{}}}",
+        }) + "\n";
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+
+        var code = new Cli(new[] { "mcp" }, env: new Dictionary<string, string>(), stdin: new StringReader(requests), stdout: stdout,
+            stderr: stderr, root: root, gitHead: () => null).Run();
+
+        Assert.Equal(0, code);
+        var responses = stdout.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonNode.Parse(line)!).ToDictionary(response => (int)response["id"]!);
+        Assert.Equal("deployangel", (string)responses[1]["result"]!["serverInfo"]!["name"]!);
+        Assert.Contains(responses[2]["result"]!["tools"]!.AsArray(), tool => (string)tool!["name"]! == "wait_for_verification");
+        Assert.True((bool)responses[3]["result"]!["isError"]!);
+        Assert.Contains("Set DEPLOYANGEL_API_TOKEN to a \"CLI & coding agents\" token", (string)responses[3]["result"]!["content"]![0]!["text"]!);
+        Assert.Contains("no API token yet", stderr.ToString());
+    }
 }

@@ -72,12 +72,17 @@ internal sealed class McpServer
     private readonly Action<double> _sleeper;
     private readonly Func<double> _clock;
     private readonly Func<string?> _gitHead;
+    private readonly bool _tokenMissing;
     private List<string>? _scopes;
 
+    internal const string MissingToken = "DeployAngel has no API token yet. Set DEPLOYANGEL_API_TOKEN to a \"CLI & coding agents\" token " +
+        "from your app's Settings in DeployAngel, or run `deployangel setup` in the project, then restart this MCP server.";
+
     public McpServer(IApiClient client, TextReader? input = null, TextWriter? output = null, TextWriter? errorOutput = null,
-        Action<double>? sleeper = null, Func<double>? clock = null, Func<string?>? gitHead = null)
+        Action<double>? sleeper = null, Func<double>? clock = null, Func<string?>? gitHead = null, bool tokenMissing = false)
     {
         _client = client;
+        _tokenMissing = tokenMissing;
         _input = input ?? Console.In;
         _output = output ?? Console.Out;
         _errorOutput = errorOutput ?? Console.Error;
@@ -221,6 +226,14 @@ internal sealed class McpServer
 
     private JsonObject CallTool(JsonNode? name, JsonObject arguments)
     {
+        if (_tokenMissing)
+        {
+            return new JsonObject
+            {
+                ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = MissingToken }),
+                ["isError"] = true,
+            };
+        }
         JsonNode content;
         try
         {
