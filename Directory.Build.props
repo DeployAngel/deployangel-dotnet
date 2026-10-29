@@ -8,7 +8,7 @@
     <Authors>Jordan Owens</Authors>
     <Copyright>Jordan Owens</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://deployangel.com</PackageProjectUrl>
+    <PackageProjectUrl>https://www.deployangel.com</PackageProjectUrl>
     <RepositoryUrl>https://github.com/DeployAngel/deployangel-dotnet</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>deployment;verification;monitoring;aspnetcore;hangfire</PackageTags>
