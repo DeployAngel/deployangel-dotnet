@@ -17,8 +17,9 @@ internal sealed class UsageException : Exception
 /// <summary>
 /// The options of one command, parsed as the Python command's argparse parses
 /// them, so a mistake gets the same message from every deployangel command:
-/// --name=value or --name value, the last one wins, no abbreviations, and
-/// anything else is "unrecognized arguments".
+/// --name=value or --name value, the last one wins (a list option keeps them
+/// all, like argparse's append), no abbreviations, and anything else is
+/// "unrecognized arguments".
 /// </summary>
 internal sealed class OptionParser
 {
@@ -31,6 +32,7 @@ internal sealed class OptionParser
         String,
         Flag,
         Integer,
+        List,
     }
 
     public OptionParser String(string flag, string? dest = null, string? defaultValue = null, params string[] choices)
@@ -52,9 +54,17 @@ internal sealed class OptionParser
         return this;
     }
 
+    public OptionParser List(string flag, string? dest = null)
+    {
+        _options[flag] = new Option(flag, dest ?? DestFor(flag), Kind.List, null, Array.Empty<string>());
+        return this;
+    }
+
     public ParsedOptions Parse(IReadOnlyList<string> args)
     {
         var values = _options.Values.ToDictionary(option => option.Dest, option => option.Default, StringComparer.Ordinal);
+        var lists = _options.Values.Where(option => option.Kind == Kind.List)
+            .ToDictionary(option => option.Dest, _ => new List<string>(), StringComparer.Ordinal);
         var flags = new HashSet<string>(StringComparer.Ordinal);
         var extras = new List<string>();
         var positionalOnly = false;
@@ -96,13 +106,18 @@ internal sealed class OptionParser
                 }
                 value = args[++index];
             }
+            if (option.Kind == Kind.List)
+            {
+                lists[option.Dest].Add(value);
+                continue;
+            }
             values[option.Dest] = Check(option, value);
         }
         if (extras.Count > 0)
         {
             throw new UsageException($"unrecognized arguments: {string.Join(" ", extras)}");
         }
-        return new ParsedOptions(values, flags);
+        return new ParsedOptions(values, flags, lists);
     }
 
     private static string Check(Option option, string value)
@@ -168,16 +183,20 @@ internal sealed class ParsedOptions
 {
     private readonly Dictionary<string, string?> _values;
     private readonly HashSet<string> _flags;
+    private readonly Dictionary<string, List<string>> _lists;
 
-    public ParsedOptions(Dictionary<string, string?> values, HashSet<string> flags)
+    public ParsedOptions(Dictionary<string, string?> values, HashSet<string> flags, Dictionary<string, List<string>>? lists = null)
     {
         _values = values;
         _flags = flags;
+        _lists = lists ?? new Dictionary<string, List<string>>();
     }
 
     public string? this[string dest] => _values.TryGetValue(dest, out var value) ? value : null;
 
     public bool Flag(string dest) => _flags.Contains(dest);
+
+    public IReadOnlyList<string> List(string dest) => _lists.TryGetValue(dest, out var list) ? list : Array.Empty<string>();
 
     public int Integer(string dest) => int.Parse(this[dest]!.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 }

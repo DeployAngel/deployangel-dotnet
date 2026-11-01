@@ -14,13 +14,19 @@ public sealed class ExerciseTests : CliTestBase
         return Documents.Verdict("observing").With("exercise_plan", plan);
     }
 
-    private (int Code, List<string> Sent) Exercise(FakeClient client, Func<string, int?> answer, params string[] argv)
+    private readonly List<IReadOnlyDictionary<string, string>> _sentHeaders = new();
+
+    private (int Code, List<string> Sent) Exercise(FakeClient client, Func<string, int?> answer, params string[] argv) =>
+        Exercise(client, answer, new Dictionary<string, string>(), argv);
+
+    private (int Code, List<string> Sent) Exercise(FakeClient client, Func<string, int?> answer, Dictionary<string, string> env, params string[] argv)
     {
         var sent = new List<string>();
-        var code = new Cli(new[] { "exercise" }.Concat(argv), env: new Dictionary<string, string>(), stdout: Stdout, stderr: Stderr, client: client,
-            sleeper: Clock.Advance, clock: Clock.Read, gitHead: () => Head, root: Root.Path, requester: url =>
+        var code = new Cli(new[] { "exercise" }.Concat(argv), env: env, stdout: Stdout, stderr: Stderr, client: client,
+            sleeper: Clock.Advance, clock: Clock.Read, gitHead: () => Head, root: Root.Path, requester: (url, headers) =>
             {
                 sent.Add(url);
+                _sentHeaders.Add(headers);
                 return answer(url);
             }).Run();
         return (code, sent);
@@ -94,6 +100,50 @@ public sealed class ExerciseTests : CliTestBase
         Assert.Contains("GET /products ×10: 401 ×10", Stdout.ToString());
         Assert.DoesNotContain("No page answered", Stdout.ToString());
         Assert.Contains(client.Calls, call => call.Name == "exercise");
+    }
+
+    [Fact]
+    public void SendsHeadersNamingThemButNeverShowingValues()
+    {
+        var client = new FakeClient(new[] { Document() });
+        var env = new Dictionary<string, string> { ["DEPLOYANGEL_EXERCISE_HEADERS"] = "Cookie: session_id=s3cret\n\nX-Test: 1\n" };
+        var (code, _) = Exercise(client, _ => 200, env, "--url=https://shop.example.com", "--header=Authorization: Bearer t0ken");
+        Assert.Equal(0, code);
+        Assert.All(_sentHeaders, headers => Assert.Equal(
+            new Dictionary<string, string> { ["Authorization"] = "Bearer t0ken", ["Cookie"] = "session_id=s3cret", ["X-Test"] = "1" }, headers));
+        var output = Stdout.ToString();
+        Assert.Contains("With headers: Authorization, Cookie, X-Test (values not shown)", output);
+        Assert.DoesNotContain("t0ken", output);
+        Assert.DoesNotContain("s3cret", output);
+        Assert.DoesNotContain(client.Calls, call => call.Args.Contains("t0ken", StringComparison.Ordinal) || call.Args.Contains("s3cret", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RejectsAMalformedHeaderWithoutEchoingIt()
+    {
+        var (code, sent) = Exercise(new FakeClient(new[] { Document() }), _ => 200, "--url=https://shop.example.com", "--header=Authorization Bearer t0ken");
+        Assert.Equal(5, code);
+        Assert.Empty(sent);
+        Assert.Contains("header 1 must look like \"Name: value\"", Stderr.ToString());
+        Assert.DoesNotContain("t0ken", Stderr.ToString());
+    }
+
+    [Fact]
+    public void FillsPathParametersAndNamesWhatsMissing()
+    {
+        var client = new FakeClient(new[] { Document() });
+        var (code, sent) = Exercise(client, _ => 200, "--url=https://shop.example.com", "--param=id=7");
+        Assert.Equal(0, code);
+        Assert.Contains("https://shop.example.com/orders/7", sent);
+        var recorded = JsonNode.Parse(client.Calls.Single(call => call.Name == "exercise").Args)!;
+        Assert.Contains("GET /orders/{id}", recorded["routes"]!.AsArray().Select(route => (string?)route!["key"]));
+        Assert.DoesNotContain("missing", recorded["skipped"]!.ToJsonString(), StringComparison.Ordinal);
+        Assert.Contains("GET /items/{itemId} (needs a path parameter: itemId)", Stdout.ToString());
+        Assert.Contains("Fill path parameters with --param, such as --param itemId=42.", Stdout.ToString());
+
+        (code, _) = Exercise(client, _ => 200, "--url=https://shop.example.com", "--param=id");
+        Assert.Equal(5, code);
+        Assert.Contains("--param must look like name=value", Stderr.ToString());
     }
 
     [Fact]

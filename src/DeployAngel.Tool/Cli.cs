@@ -31,7 +31,8 @@ internal sealed class Cli
   plan       What to exercise so a release  [--commit=SHA | --version=V | --deployment=ID]
              clears sooner                  [--format=text|json]
   exercise   Send the plan's read-only      --url=PRODUCTION_URL [--commit=SHA | --version=V | --deployment=ID]
-             requests to production         [--max-requests=200] [--dry-run]
+             requests to production         [--param=NAME=VALUE] [--header=""Name: value""]
+                                            [--max-requests=200] [--dry-run]
   exception  Details for a fingerprint      deployangel exception FINGERPRINT
   check      Report a smoke test result     --name=NAME --status=pass|fail [--covers=a,b]
                                             [--commit=SHA | --deployment=ID] [--details-url=URL]
@@ -73,7 +74,7 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
     private readonly Func<double> _clock;
     private readonly Func<string?> _gitHead;
     private readonly string _root;
-    private readonly Func<string, int?>? _requester;
+    private readonly Func<string, IReadOnlyDictionary<string, string>, int?>? _requester;
     private readonly IApiClient? _injectedClient;
     private IApiClient? _client;
     private JsonObject? _savedCredentials;
@@ -84,7 +85,7 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
     /// <param name="stdoutIsTerminal">Whether output goes to a person, which makes text the default format.</param>
     public Cli(IEnumerable<string> argv, IReadOnlyDictionary<string, string>? env = null, TextReader? stdin = null,
         TextWriter? stdout = null, TextWriter? stderr = null, IApiClient? client = null, Action<double>? sleeper = null,
-        Func<double>? clock = null, Func<string?>? gitHead = null, string? root = null, Func<string, int?>? requester = null,
+        Func<double>? clock = null, Func<string?>? gitHead = null, string? root = null, Func<string, IReadOnlyDictionary<string, string>, int?>? requester = null,
         bool? stdoutIsTerminal = null)
     {
         _argv = argv.ToList();
@@ -274,12 +275,16 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
     {
         var options = Parse(new OptionParser().String("--url").String("--commit").String("--version").String("--deployment", "deployment_id")
             .Integer("--max-requests", "max_requests", Exerciser.MaxRequests)
-            .Flag("--dry-run", "dry_run"));
+            .Flag("--dry-run", "dry_run").List("--header", "headers").List("--param", "params"));
         var url = options["url"] ?? "";
         if (!ProductionUrl.IsMatch(url))
         {
             return UsageError("exercise needs --url, the app's production URL, like https://example.com");
         }
+        // DEPLOYANGEL_EXERCISE_HEADERS, one per line, keeps a secret out of
+        // shell history and the process list.
+        var headers = Exerciser.ParseHeaders(options.List("headers").Concat((Env("DEPLOYANGEL_EXERCISE_HEADERS") ?? "").Split('\n')));
+        var parameters = Exerciser.ParseParameters(options.List("params"));
         var target = TargetFrom(options);
         if (target is null)
         {
@@ -301,12 +306,18 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
             return 0;
         }
 
-        var exerciser = new Exerciser(url, Math.Min(Math.Max(options.Integer("max_requests"), 1), Exerciser.MaxRequests), _sleeper, _requester);
+        var exerciser = new Exerciser(url, Math.Min(Math.Max(options.Integer("max_requests"), 1), Exerciser.MaxRequests), _sleeper, _requester,
+            headers, parameters);
+        var headerNames = headers.Count > 0 ? $"With headers: {string.Join(", ", headers.Keys)} (values not shown)" : null;
         if (options.Flag("dry_run"))
         {
             var (targets, skipped) = exerciser.Plan(plan);
             var preview = new List<string> { $"Would send {targets.Sum(t => t.Count)} requests:" };
             preview.AddRange(targets.Select(t => $"  {exerciser.UrlFor(t.Path)} ×{t.Count}"));
+            if (headerNames is not null)
+            {
+                preview.Add(headerNames);
+            }
             AddSkipped(preview, skipped);
             Print(string.Join("\n", preview));
             return 0;
@@ -320,6 +331,10 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
             var key = JsonValues.Text(JsonValues.Get(route, "key"));
             var codes = string.Join(", ", result.Codes[key].Select(pair => $"{pair.Key} ×{pair.Value}"));
             lines.Add($"  {key} ×{JsonValues.Text(JsonValues.Get(route, "requests"))}: {codes}");
+        }
+        if (headerNames is not null)
+        {
+            lines.Add(headerNames);
         }
         AddSkipped(lines, result.Skipped);
         if (result.Unreachable)
@@ -345,7 +360,13 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
         {
             var ranAt = DateTimeOffset.FromUnixTimeMilliseconds((long)(_clock() * 1000)).UtcDateTime
                 .ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
-            Client().RecordExercise(JsonValues.Text(JsonValues.Get(JsonValues.Get(document, "deployment"), "id")), result.Routes, result.Skipped, ranAt);
+            var skippedToRecord = new JsonArray(result.Skipped.Select(s =>
+            {
+                var copy = s!.DeepClone().AsObject();
+                copy.Remove("missing");
+                return (JsonNode?)copy;
+            }).ToArray());
+            Client().RecordExercise(JsonValues.Text(JsonValues.Get(JsonValues.Get(document, "deployment"), "id")), result.Routes, skippedToRecord, ranAt);
             lines.Add("Recorded on the release. Wait for the verdict with: deployangel verify --wait");
         }
         Print(string.Join("\n", lines));
@@ -587,12 +608,25 @@ https://www.deployangel.com/setup-for-agents.md".Replace("\r\n", "\n", StringCom
         }
     }
 
+    /// <summary>Each skipped route and why, naming the parameters a --param would fill.</summary>
     private static void AddSkipped(List<string> lines, JsonArray skipped)
     {
-        if (skipped.Count > 0)
+        if (skipped.Count == 0)
         {
-            lines.Add("Skipped:");
-            lines.AddRange(skipped.Select(s => $"  {JsonValues.Text(JsonValues.Get(s, "key"))} ({JsonValues.Text(JsonValues.Get(s, "reason"))})"));
+            return;
+        }
+        static List<string> Missing(JsonNode? s) => JsonValues.ItemsOf(JsonValues.Get(s, "missing")).Select(JsonValues.Text).ToList();
+        lines.Add("Skipped:");
+        lines.AddRange(skipped.Select(s =>
+        {
+            var missing = Missing(s);
+            var names = missing.Count > 0 ? $": {string.Join(", ", missing)}" : "";
+            return $"  {JsonValues.Text(JsonValues.Get(s, "key"))} ({JsonValues.Text(JsonValues.Get(s, "reason"))}{names})";
+        }));
+        var needing = skipped.Select(Missing).FirstOrDefault(missing => missing.Count > 0);
+        if (needing is not null)
+        {
+            lines.Add($"Fill path parameters with --param, such as --param {needing[0]}=42.");
         }
     }
 

@@ -54,9 +54,10 @@ internal sealed record ExerciseResult(JsonArray Routes, JsonArray Skipped, int S
 /// <c>deployangel exercise</c>: sends a release's exercise plan's read-only
 /// requests to production from the customer's side, then records what it
 /// sent, so the release page says which routes were exercised that way. Only
-/// GET routes with no path parameters and not marked as changing data; the
-/// rest are skipped and named, for the agent or a smoke test with a test
-/// account. The requests count like any traffic through the app's agent.
+/// GET routes not marked as changing data, and only those whose path
+/// parameters the caller filled (--param id=42); the rest are skipped and
+/// named, for the agent or a smoke test with a test account. The requests
+/// count like any traffic through the app's agent.
 /// Behaves like the Ruby gem's and the Python package's exerciser.
 /// </summary>
 internal sealed class Exerciser
@@ -73,13 +74,25 @@ internal sealed class Exerciser
 
     internal static readonly string[] NotServedCodes = NotServed.Select(code => code.ToString(CultureInfo.InvariantCulture)).ToArray();
 
-    // Rails' :id and *path, Django's <int:pk>, ASP.NET Core's and FastAPI's {id}.
-    private static readonly Regex Parameter = new(@"/[:*{<]", RegexOptions.CultureInvariant);
+    // A path parameter, capturing its name: Rails' :id and *path, ASP.NET
+    // Core's and FastAPI's {id}, {id:int}, and {*path}, Django's <int:pk>.
+    private static readonly Regex Parameter = new(
+        @"[:*]([A-Za-z_][A-Za-z0-9_]*)|\{\*{0,2}([A-Za-z_][A-Za-z0-9_]*)(?::[^}]*)?\??\}|<(?:[A-Za-z0-9_]+:)?([A-Za-z_][A-Za-z0-9_]*)>",
+        RegexOptions.CultureInvariant);
+
+    // One that can span segments, so its value keeps its slashes.
+    private static readonly Regex Glob = new(@"\A(?:\*|\{\*|\{[A-Za-z0-9_]+:path\}|<path:)", RegexOptions.CultureInvariant);
+
+    // "Name: value", as with curl -H: a header name, then a value on one line.
+    private static readonly Regex Header = new(@"\A([!#$%&'*+.^_`|~0-9A-Za-z-]+):[ \t]*(\S[^\r\n]*)\z", RegexOptions.CultureInvariant);
+
+    private static readonly Regex Param = new(@"\A([A-Za-z_][A-Za-z0-9_]*)=(.+)\z", RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     private static readonly Lazy<HttpClient> DefaultHttp = new(() =>
     {
         // Redirects aren't followed: the request already reached the app.
-        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout };
+        // Without a cookie container, a Cookie header is sent as given.
+        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) { Timeout = Timeout };
         http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
             $"DeployAngel-Exercise/{ToolInfo.Version} (+https://www.deployangel.com/docs#exercise)");
         http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/html,application/json;q=0.9,*/*;q=0.8");
@@ -91,15 +104,22 @@ internal sealed class Exerciser
     private readonly string _basePath;
     private readonly int _maxRequests;
     private readonly Action<double> _sleeper;
-    private readonly Func<string, int?> _requester;
+    private readonly Func<string, IReadOnlyDictionary<string, string>, int?> _requester;
+    private readonly IReadOnlyDictionary<string, string> _headers;
+    private readonly IReadOnlyDictionary<string, string> _parameters;
 
     private Dictionary<string, JsonObject> _statuses = new();
     private Dictionary<string, Dictionary<string, int>> _codes = new();
     private int _sent;
     private int _errorsInARow;
 
-    public Exerciser(string baseUrl, int maxRequests = MaxRequests, Action<double>? sleeper = null, Func<string, int?>? requester = null)
+    /// <summary>Headers go only to baseUrl's host: redirects aren't followed.</summary>
+    public Exerciser(string baseUrl, int maxRequests = MaxRequests, Action<double>? sleeper = null,
+        Func<string, IReadOnlyDictionary<string, string>, int?>? requester = null,
+        IReadOnlyDictionary<string, string>? headers = null, IReadOnlyDictionary<string, string>? parameters = null)
     {
+        _headers = headers ?? new Dictionary<string, string>();
+        _parameters = parameters ?? new Dictionary<string, string>();
         var parts = Regex.Match(baseUrl, @"\A(?:([^:/?#]+):)?(?://([^/?#]*))?([^?#]*)");
         _scheme = parts.Groups[1].Value;
         _host = parts.Groups[2].Value;
@@ -124,20 +144,23 @@ internal sealed class Exerciser
             var space = key.IndexOf(' ', StringComparison.Ordinal);
             var method = space < 0 ? key : key[..space];
             var path = space < 0 ? "" : key[(space + 1)..];
-            string? reason = null;
             if (JsonValues.Truthy(JsonValues.Get(item, "mutating")) || method != "GET")
             {
-                reason = "changes data";
-            }
-            else if (path.Length == 0 || Parameter.IsMatch(path))
-            {
-                reason = "needs a path parameter";
-            }
-            if (reason is not null)
-            {
-                skipped.Add(new JsonObject { ["key"] = JsonValues.Copy(JsonValues.Get(item, "key")), ["reason"] = reason });
+                skipped.Add(new JsonObject { ["key"] = JsonValues.Copy(JsonValues.Get(item, "key")), ["reason"] = "changes data" });
                 continue;
             }
+            var (filled, missing) = path.Length == 0 ? (path, new List<string>()) : Fill(path);
+            if (path.Length == 0 || missing.Count > 0)
+            {
+                skipped.Add(new JsonObject
+                {
+                    ["key"] = JsonValues.Copy(JsonValues.Get(item, "key")),
+                    ["reason"] = "needs a path parameter",
+                    ["missing"] = new JsonArray(missing.Select(name => (JsonNode?)name).ToArray()),
+                });
+                continue;
+            }
+            path = filled;
             var needed = JsonValues.Truthy(JsonValues.Get(item, "runs_needed"))
                 ? JsonValues.ToInteger(JsonValues.Get(item, "runs_needed")) - RunsOf(item)
                 : 1;
@@ -211,6 +234,71 @@ internal sealed class Exerciser
             targets.Where(target => _codes.ContainsKey(target.Key)).ToDictionary(target => target.Key, target => _codes[target.Key]), unsent);
     }
 
+    /// <summary>
+    /// The path with the given parameters filled in, and the names of any left
+    /// unfilled.
+    /// </summary>
+    public (string Path, List<string> Missing) Fill(string path)
+    {
+        var missing = new List<string>();
+        var filled = Parameter.Replace(path, match =>
+        {
+            var name = new[] { match.Groups[1], match.Groups[2], match.Groups[3] }.First(group => group.Success).Value;
+            if (!_parameters.TryGetValue(name, out var value))
+            {
+                if (!missing.Contains(name))
+                {
+                    missing.Add(name);
+                }
+                return match.Value;
+            }
+            var parts = Glob.IsMatch(match.Value) ? value.Split('/') : new[] { value };
+            return string.Join("/", parts.Select(Uri.EscapeDataString));
+        });
+        return (filled, missing);
+    }
+
+    /// <summary>
+    /// Headers to send with every request, such as a token or a test account's
+    /// session cookie, from "Name: value" lines. Throws naming the line, never
+    /// its value.
+    /// </summary>
+    public static Dictionary<string, string> ParseHeaders(IEnumerable<string> lines)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal);
+        var index = 0;
+        foreach (var line in lines.Select(line => line.Trim()).Where(line => line.Length > 0))
+        {
+            index++;
+            var match = Header.Match(line);
+            if (!match.Success)
+            {
+                throw new UsageException($"header {index} must look like \"Name: value\"");
+            }
+            headers[match.Groups[1].Value] = match.Groups[2].Value.TrimEnd();
+        }
+        return headers;
+    }
+
+    /// <summary>
+    /// Path parameter values, from "name=value" (--param id=42). Each fills
+    /// that name in every route that has it.
+    /// </summary>
+    public static Dictionary<string, string> ParseParameters(IEnumerable<string> pairs)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in pairs)
+        {
+            var match = Param.Match(pair);
+            if (!match.Success)
+            {
+                throw new UsageException($"--param must look like name=value, such as --param id=42 (got '{pair}')");
+            }
+            parameters[match.Groups[1].Value] = match.Groups[2].Value;
+        }
+        return parameters;
+    }
+
     public string UrlFor(string path) => $"{_scheme}://{_host}{_basePath.TrimEnd('/')}{path}";
 
     private bool IsUnreachable => _errorsInARow >= MaxConsecutiveErrors;
@@ -221,7 +309,7 @@ internal sealed class Exerciser
         {
             _sleeper(Interval);
         }
-        var status = _requester(UrlFor(target.Path));
+        var status = _requester(UrlFor(target.Path), _headers);
         _sent++;
         var kind = status is > 0 ? $"{status.Value / 100}xx" : "error";
         if (!_statuses.TryGetValue(target.Key, out var statuses))
@@ -269,11 +357,17 @@ internal sealed class Exerciser
     private static long IntegerOr0(JsonNode? value) => JsonValues.Truthy(value) ? JsonValues.ToInteger(value) : 0;
 
     /// <summary>The status code, or null when there was no answer.</summary>
-    private static int? Get(string url)
+    private static int? Get(string url, IReadOnlyDictionary<string, string> headers)
     {
         try
         {
-            using var response = DefaultHttp.Value.Send(new HttpRequestMessage(HttpMethod.Get, url));
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            foreach (var (name, value) in headers)
+            {
+                request.Headers.Remove(name);
+                request.Headers.TryAddWithoutValidation(name, value);
+            }
+            using var response = DefaultHttp.Value.Send(request);
             return (int)response.StatusCode;
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException or IOException
