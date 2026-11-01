@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 (2026-11-01)
 
 - `deployangel exercise --param id=42` fills path parameters (`{id}`,
   `{id:int}`, `:id`), so routes with IDs in their paths can be exercised.
