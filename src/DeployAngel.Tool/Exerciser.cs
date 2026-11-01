@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -26,7 +27,28 @@ internal sealed class ExerciseTarget
     public int Count { get; set; }
 }
 
-internal sealed record ExerciseResult(JsonArray Routes, JsonArray Skipped, int Sent, bool Unreachable);
+/// <summary>
+/// What was sent. Codes holds each route's exact status codes ("no answer"
+/// when there was none), for display; Routes carries status classes, which
+/// is what's recorded. Unsent: requests the plan wanted that went nowhere,
+/// since no route answered.
+/// </summary>
+internal sealed record ExerciseResult(JsonArray Routes, JsonArray Skipped, int Sent, bool Unreachable,
+    IReadOnlyDictionary<string, Dictionary<string, int>> Codes, int Unsent)
+{
+    /// <summary>
+    /// Every answer said the page isn't served. Usually the wrong host, like
+    /// the app's marketing site.
+    /// </summary>
+    public bool NothingServed
+    {
+        get
+        {
+            var answers = Codes.Values.SelectMany(codes => codes.Keys).ToList();
+            return answers.Count > 0 && answers.All(code => Exerciser.NotServedCodes.Contains(code));
+        }
+    }
+}
 
 /// <summary>
 /// <c>deployangel exercise</c>: sends a release's exercise plan's read-only
@@ -49,6 +71,8 @@ internal sealed class Exerciser
     // of a resource that has none. One answer like this is enough to know.
     private static readonly int[] NotServed = { 404, 405, 410 };
 
+    internal static readonly string[] NotServedCodes = NotServed.Select(code => code.ToString(CultureInfo.InvariantCulture)).ToArray();
+
     // Rails' :id and *path, Django's <int:pk>, ASP.NET Core's and FastAPI's {id}.
     private static readonly Regex Parameter = new(@"/[:*{<]", RegexOptions.CultureInvariant);
 
@@ -70,6 +94,7 @@ internal sealed class Exerciser
     private readonly Func<string, int?> _requester;
 
     private Dictionary<string, JsonObject> _statuses = new();
+    private Dictionary<string, Dictionary<string, int>> _codes = new();
     private int _sent;
     private int _errorsInARow;
 
@@ -134,6 +159,7 @@ internal sealed class Exerciser
     {
         var (targets, skipped) = Plan(exercisePlan);
         _statuses = new Dictionary<string, JsonObject>();
+        _codes = new Dictionary<string, Dictionary<string, int>>();
         _sent = 0;
         _errorsInARow = 0;
         var leftover = 0;
@@ -169,6 +195,7 @@ internal sealed class Exerciser
                 Send(answered[i % answered.Count]);
             }
         }
+        var unsent = answered.Count > 0 ? 0 : leftover;
         var routes = new JsonArray();
         foreach (var target in targets.Where(target => _statuses.ContainsKey(target.Key)))
         {
@@ -180,7 +207,8 @@ internal sealed class Exerciser
                 ["statuses"] = statuses.DeepClone(),
             });
         }
-        return new ExerciseResult(routes, skipped, _sent, IsUnreachable);
+        return new ExerciseResult(routes, skipped, _sent, IsUnreachable,
+            targets.Where(target => _codes.ContainsKey(target.Key)).ToDictionary(target => target.Key, target => _codes[target.Key]), unsent);
     }
 
     public string UrlFor(string path) => $"{_scheme}://{_host}{_basePath.TrimEnd('/')}{path}";
@@ -201,6 +229,12 @@ internal sealed class Exerciser
             _statuses[target.Key] = statuses = new JsonObject();
         }
         statuses[kind] = (statuses.TryGetPropertyValue(kind, out var count) ? (int)count! : 0) + 1;
+        if (!_codes.TryGetValue(target.Key, out var codes))
+        {
+            _codes[target.Key] = codes = new Dictionary<string, int>();
+        }
+        var code = status is > 0 ? status.Value.ToString(CultureInfo.InvariantCulture) : "no answer";
+        codes[code] = codes.GetValueOrDefault(code) + 1;
         _errorsInARow = kind == "error" ? _errorsInARow + 1 : 0;
         return status;
     }

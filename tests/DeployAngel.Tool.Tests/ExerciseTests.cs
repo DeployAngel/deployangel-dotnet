@@ -47,7 +47,7 @@ public sealed class ExerciseTests : CliTestBase
         var output = Stdout.ToString();
         foreach (var text in new[]
                  {
-                     "Sent 18 requests to https://shop.example.com/", "GET /products ×10: 10 2xx", "POST /password_resets (changes data)",
+                     "Sent 18 requests to https://shop.example.com/", "GET /products ×10: 200 ×10", "POST /password_resets (changes data)",
                      "Recorded on the release.",
                  })
         {
@@ -64,6 +64,36 @@ public sealed class ExerciseTests : CliTestBase
         var routes = JsonNode.Parse(client.Calls.Single(call => call.Name == "exercise").Args)!["routes"]!;
         Assert.Equal("""[{"key":"GET /products","requests":17,"statuses":{"2xx":17}},{"key":"GET /about","requests":1,"statuses":{"4xx":1}}]""",
             routes.ToJsonString());
+    }
+
+    [Fact]
+    public void SaysWhenNoPageAnsweredAndRecordsNothing()
+    {
+        var client = new FakeClient(new[] { Document() });
+        var (code, sent) = Exercise(client, _ => 404, "--url=https://www.shop.example.com");
+        Assert.Equal(5, code);
+        Assert.Equal(2, sent.Count);
+        var output = Stdout.ToString();
+        foreach (var text in new[]
+                 {
+                     "GET /products ×1: 404", "No page answered at https://www.shop.example.com", "Is that the app's own host",
+                     "16 more requests weren't sent", "Nothing was recorded on the release.",
+                 })
+        {
+            Assert.Contains(text, output);
+        }
+        Assert.DoesNotContain(client.Calls, call => call.Name == "exercise");
+    }
+
+    [Fact]
+    public void RecordsPagesThatTurnedTheRequestAway()
+    {
+        var client = new FakeClient(new[] { Document() });
+        var (code, _) = Exercise(client, _ => 401, "--url=https://shop.example.com");
+        Assert.Equal(0, code);
+        Assert.Contains("GET /products ×10: 401 ×10", Stdout.ToString());
+        Assert.DoesNotContain("No page answered", Stdout.ToString());
+        Assert.Contains(client.Calls, call => call.Name == "exercise");
     }
 
     [Fact]

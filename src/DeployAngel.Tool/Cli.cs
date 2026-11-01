@@ -316,13 +316,30 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
         var lines = new List<string> { $"Sent {result.Sent} requests to {url}:" };
         foreach (var route in result.Routes)
         {
-            var statuses = string.Join(", ", JsonValues.ObjectOf(JsonValues.Get(route, "statuses")).Select(pair => $"{JsonValues.Text(pair.Value)} {pair.Key}"));
-            lines.Add($"  {JsonValues.Text(JsonValues.Get(route, "key"))} ×{JsonValues.Text(JsonValues.Get(route, "requests"))}: {statuses}");
+            // "200 ×4, 500 ×1", in the order they came.
+            var key = JsonValues.Text(JsonValues.Get(route, "key"));
+            var codes = string.Join(", ", result.Codes[key].Select(pair => $"{pair.Key} ×{pair.Value}"));
+            lines.Add($"  {key} ×{JsonValues.Text(JsonValues.Get(route, "requests"))}: {codes}");
         }
         AddSkipped(lines, result.Skipped);
         if (result.Unreachable)
         {
             lines.Add($"Stopped early: {url} isn't answering.");
+        }
+        // Requests that reached no page aren't worth recording: the app
+        // likely never saw them.
+        if (result.Routes.Count > 0 && result.NothingServed && !result.Unreachable)
+        {
+            lines.Add("");
+            lines.Add($"No page answered at {url}: every route said it doesn't exist. Is that the app's own host, " +
+                "and not a marketing site or a different domain? Pass the URL where the app's pages load.");
+            if (result.Unsent > 0)
+            {
+                lines.Add($"{result.Unsent} more requests weren't sent, since no route answered.");
+            }
+            lines.Add("Nothing was recorded on the release.");
+            Print(string.Join("\n", lines));
+            return ExitCodes.Usage;
         }
         if (result.Routes.Count > 0)
         {
