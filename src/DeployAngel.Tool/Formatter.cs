@@ -210,6 +210,9 @@ internal static class Formatter
             ("Changed but not yet exercised", changed.Select(item => Text(Get(item, "key"))).ToList()),
             ("To clear sooner, exercise (deployangel plan for details)", ExercisableItems(document).Take(5).ToList()),
             ("Late regressions", ItemsOf(Get(document, "late_regressions")).Select(late => Text(Get(late, "summary"))).ToList()),
+            // A failed release's rollback target and where to look first
+            // (servers from 2026-11-01 send them).
+            ("Next steps", ItemsOf(Get(document, "next_steps")).Select(step => Text(Get(step, "text"))).ToList()),
         };
         return found.Where(section => section.Item2.Count > 0).ToList();
     }

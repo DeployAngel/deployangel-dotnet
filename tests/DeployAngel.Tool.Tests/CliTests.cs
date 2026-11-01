@@ -167,6 +167,10 @@ public sealed class CliTests : CliTestBase
               "sources": {"route:POST /orders": 8}}]
             """);
         document["deployment"]!["promoted_from"] = new JsonObject { ["environment"] = "staging", ["version"] = "v57", ["verdict"] = "verified" };
+        document["next_steps"] = JsonNode.Parse("""
+            [{"kind": "rollback", "text": "v183 was the last cleared release. No migration files changed since then.",
+              "release": {"version": "v183"}, "migrations": []}]
+            """);
         Run(new FakeClient(new[] { document }), "verify", "--format=text");
 
         var output = Stdout.ToString();
@@ -176,6 +180,7 @@ public sealed class CliTests : CliTestBase
                      "KeyNotFoundException in Shop/Controllers/OrdersController.cs#Create (8x) route:POST /orders", "Verdict: failed",
                      "Promoted from staging v57 (cleared)",
                      "Recurring job on recurring_job:PruneHistoryJob: didn't run, expected by 08:15 UTC (declared schedule)",
+                     "Next steps:\n  v183 was the last cleared release. No migration files changed since then.",
                  })
         {
             Assert.Contains(text, output);
