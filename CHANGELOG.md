@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 (2026-11-03)
 
 - An exception raised entirely in libraries, with no frame from the app's
   code, now sends its first library frames as its stack trace
