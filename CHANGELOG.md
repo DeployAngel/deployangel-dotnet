@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- An exception raised entirely in libraries, with no frame from the app's
+  code, now sends its first library frames as its stack trace
+  (`MailKit.Net.Smtp.SmtpClient#Send`), named like the top frame. Before,
+  it sent none, so an error such as a background job's SMTP timeout showed
+  no trace. Matches the Ruby gem and the Python package.
+
 ## 0.1.5 (2026-11-01)
 
 - `deployangel exercise --param id=42` fills path parameters (`{id}`,

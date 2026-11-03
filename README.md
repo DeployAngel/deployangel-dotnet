@@ -140,7 +140,8 @@ doesn't invalidate cached layers, and you build with
   each has been running, so a job that hangs is noticed.
 - Release identity, runtime versions, and a per-process instance ID.
 - Exceptions: a stable fingerprint, the exception class, the first line of the
-  message, and application frames only (file paths and method names). In
+  message, and application frames only (file paths and method names), or
+  the first library frames (type and method) when none is the app's. In
   the message, numbers, IDs, emails, UUIDs, long hex strings, quoted values,
   and the request's host are replaced with placeholders. Other words are kept:
   `Payment failed for Jane Doe` is sent as it is. If your app's messages might
@@ -246,7 +247,7 @@ options.IgnoredRoutes.Add("GET /status");
 ### Exception messages
 
 To send exceptions without any message, only their class, fingerprint, and
-application frames:
+stack frames:
 
 ```csharp
 options.ExceptionMessages = false;     // or DEPLOYANGEL_EXCEPTION_MESSAGES=false

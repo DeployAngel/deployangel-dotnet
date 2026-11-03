@@ -151,7 +151,19 @@ public class FingerprintTests
     public void BacktracesKeepOnlyApplicationFrames()
     {
         Assert.Equal(new[] { "src/Shop/Services/OrderService.cs#Create", "src/Shop/Controllers/OrdersController.cs#Post" },
-            Fingerprint.AppBacktrace(Frames, Map));
+            Fingerprint.RepresentativeBacktrace(Frames, Map));
+    }
+
+    [Fact]
+    public void BacktracesKeepTheFirstLibraryFramesWhenThereIsNoApplicationFrame()
+    {
+        var frames = new[]
+        {
+            new Frame("/_/src/libraries/System.Net.Sockets/Socket.cs", "System.Net.Sockets.Socket", "Receive", Maps.Framework),
+            new Frame("/_/src/MailKit/Net/Smtp/SmtpClient.cs", "MailKit.Net.Smtp.SmtpClient", "Send", Maps.Framework),
+        };
+        Assert.Equal(new[] { "System.Net.Sockets.Socket#Receive", "MailKit.Net.Smtp.SmtpClient#Send" },
+            Fingerprint.RepresentativeBacktrace(frames, Map));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

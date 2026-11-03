@@ -192,7 +192,7 @@ internal sealed class McpServer
                 TargetProperties()),
             Tool("list_deployments", "Recent deployments with their verification state and verdict.",
                 new JsonObject { ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 50, ["default"] = 10 } }),
-            Tool("get_exception", "Sanitized details and the application stack trace for an exception fingerprint.",
+            Tool("get_exception", "Sanitized details and a representative stack trace (application frames, or library frames when there are none) for an exception fingerprint.",
                 new JsonObject { ["fingerprint"] = new JsonObject { ["type"] = "string" } }, "fingerprint"),
             Tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover.",
                 new JsonObject

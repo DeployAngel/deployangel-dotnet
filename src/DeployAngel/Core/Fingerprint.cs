@@ -123,11 +123,19 @@ internal static class Fingerprint
     }
 
     public static IReadOnlyList<string> Backtrace(Exception exception, SourceMap map) =>
-        AppBacktrace(Frames(Unwrap(exception)), map);
+        RepresentativeBacktrace(Frames(Unwrap(exception)), map);
 
-    /// <summary>Application frames only.</summary>
-    public static IReadOnlyList<string> AppBacktrace(IReadOnlyList<Frame> frames, SourceMap map) =>
-        frames.Where(f => map.IsAppAssembly(f.Assembly)).Select(f => Name(f, map)).Take(MaxBacktrace).ToList();
+    /// <summary>
+    /// Application frames only. An exception raised entirely in libraries (an
+    /// SMTP timeout in a background job) has none, so it gets its first frames
+    /// instead, named as in TopFrame: they're the only way to tell which
+    /// library's path failed.
+    /// </summary>
+    public static IReadOnlyList<string> RepresentativeBacktrace(IReadOnlyList<Frame> frames, SourceMap map)
+    {
+        var app = frames.Where(f => map.IsAppAssembly(f.Assembly)).ToList();
+        return (app.Count > 0 ? app : frames).Take(MaxBacktrace).Select(f => Name(f, map)).ToList();
+    }
 
     public static string Name(Frame frame, SourceMap map)
     {
