@@ -29,10 +29,15 @@ internal static class Formatter
         ["first_use_failure"] = "First-use failure",
         ["external_check"] = "External check",
         ["checkpoint_rate"] = "Checkpoint",
+        ["volume_drop"] = "Volume",
     };
 
     private static readonly string[] Durations = { "p95_latency", "job_duration", "queue_latency" };
     private static readonly string[] Counts = { "new_fingerprint", "checkpoint_rate" };
+
+    // Findings worth listing: problems, and changes a person accepted as
+    // intended (servers from 2026-11-04 send "accepted").
+    private static readonly string[] Listed = { "failing", "warning", "accepted" };
 
     // Exercise plan statuses with something worth running now.
     public static readonly string[] Exercisable = { "exercisable", "waiting_for_activity" };
@@ -60,7 +65,11 @@ internal static class Formatter
         if (found.Count > 0)
         {
             lines.Add("Findings:");
-            lines.AddRange(found.Select(finding => $"  {Text(Get(finding, "status")).PadRight(8)} {FindingLine(finding)}"));
+            foreach (var finding in found)
+            {
+                lines.Add($"  {Text(Get(finding, "status")).PadRight(8)} {FindingLine(finding)}");
+                lines.AddRange(AcceptanceLines(finding).Select(line => $"           {line}"));
+            }
         }
         var gathering = GatheringLine(document);
         if (gathering is not null)
@@ -92,7 +101,8 @@ internal static class Formatter
         if (found.Count > 0)
         {
             lines.AddRange(new[] { "", "| Status | Finding |", "| --- | --- |" });
-            lines.AddRange(found.Select(finding => $"| {Text(Get(finding, "status"))} | {Cell(FindingLine(finding))} |"));
+            lines.AddRange(found.Select(finding =>
+                $"| {Text(Get(finding, "status"))} | {Cell(string.Join(". ", AcceptanceLines(finding).Prepend(FindingLine(finding))))} |"));
         }
         var gathering = GatheringLine(document);
         if (gathering is not null)
@@ -164,8 +174,26 @@ internal static class Formatter
 
     public static List<JsonNode?> Problems(JsonObject document) =>
         ItemsOf(Get(document, "findings"))
-            .Where(finding => StringOf(Get(finding, "status")) is "failing" or "warning")
+            .Where(finding => Listed.Contains(StringOf(Get(finding, "status"))))
             .ToList();
+
+    /// <summary>
+    /// Who accepted a finding as an intended change, or where a person can.
+    /// Only a person can, on the release page: the API can't.
+    /// </summary>
+    public static List<string> AcceptanceLines(JsonNode? finding)
+    {
+        var accepted = Get(finding, "accepted_as_intended");
+        if (Truthy(accepted))
+        {
+            return new List<string> { $"Accepted as intended by {Text(Get(accepted, "by"))}: {Text(Get(accepted, "note"))}" };
+        }
+        if (Truthy(Get(finding, "accept_url")))
+        {
+            return new List<string> { $"If this change was intended, a person can accept it: {Text(Get(finding, "accept_url"))}" };
+        }
+        return new List<string>();
+    }
 
     public static string? GatheringLine(JsonObject document)
     {
@@ -383,6 +411,14 @@ internal static class Formatter
         var signal = StringOf(Get(finding, "signal"));
         var labelText = signal is not null && Labels.TryGetValue(signal, out var name) ? name : Text(Get(finding, "signal"));
         var label = $"{labelText} on {Text(Get(finding, "scope"))}";
+        if (signal == "volume_drop")
+        {
+            // Its baseline value is what the release before predicts for this
+            // much traffic.
+            var unit = Text(Get(finding, "scope")).StartsWith("route:", StringComparison.Ordinal) ? "requests" : "runs";
+            var seen = Get(finding, "observed_value");
+            return $"{label}: {(Truthy(seen) ? ToInteger(seen) : 0)} {unit}, about {Round(NumberOr0(Get(finding, "baseline_value")))} expected";
+        }
         if (Counts.Contains(signal))
         {
             var observed = Get(finding, "observed_value");

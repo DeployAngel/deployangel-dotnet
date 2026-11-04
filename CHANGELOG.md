@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `deployangel verify` shows a volume drop (servers from 2026-11-04) as
+  what ran against what was expected (`0 requests, about 27 expected`),
+  and lists findings a person accepted as an intended change, with who
+  and why. A failing finding that could be intended gets the link where a
+  person can accept it; the CLI and MCP server can't, so an agent never
+  accepts its own failure. Matches the Ruby gem and the Python package.
+- The MCP server's instructions, and the block `deployangel install
+  agents` writes, tell agents to hand that link to the user with their
+  evidence and never report the release as a success.
+
 ## 0.1.6 (2026-11-03)
 
 - An exception raised entirely in libraries, with no frame from the app's

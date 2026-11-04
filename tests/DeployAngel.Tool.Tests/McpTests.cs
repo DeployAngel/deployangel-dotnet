@@ -30,7 +30,7 @@ public sealed class McpTests
         Assert.Equal("2025-03-26", (string?)result["protocolVersion"]);
         Assert.Equal("deployangel", (string?)result["serverInfo"]!["name"]);
         var instructions = (string)result["instructions"]!;
-        foreach (var text in new[] { "inconclusive means NOT verified", "medium clears a release just as high does", "watching_closely", "get_exercise_plan", "warm_up" })
+        foreach (var text in new[] { "inconclusive means NOT verified", "medium clears a release just as high does", "watching_closely", "get_exercise_plan", "warm_up", "You cannot accept it", "accept_url" })
         {
             Assert.Contains(text, instructions);
         }

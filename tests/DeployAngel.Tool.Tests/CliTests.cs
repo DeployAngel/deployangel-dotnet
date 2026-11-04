@@ -189,6 +189,30 @@ public sealed class CliTests : CliTestBase
     }
 
     [Fact]
+    public void ShowsAVolumeDropAgainstWhatWasExpectedWhoAcceptedAChangeAsIntendedAndWhereAPersonCan()
+    {
+        var document = Documents.Verdict("closed", "failed");
+        document["findings"] = JsonNode.Parse("""
+            [{"signal": "volume_drop", "scope": "route:POST /scans/callback", "status": "failing", "baseline_value": 27.4,
+              "observed_value": 0.0, "accept_url": "https://app.deployangel.com/apps/1/deployments/2#findings"},
+             {"signal": "checkpoint_rate", "scope": "checkpoint:upload.scanned", "status": "accepted", "baseline_value": 41.0,
+              "observed_value": 0.0, "accepted_as_intended": {"by": "Pat", "note": "Retired the scanner"}}]
+            """);
+        Run(new FakeClient(new[] { document }), "verify", "--format=text");
+
+        var output = Stdout.ToString();
+        foreach (var text in new[]
+                 {
+                     "failing  Volume on route:POST /scans/callback: 0 requests, about 27 expected",
+                     "If this change was intended, a person can accept it: https://app.deployangel.com/apps/1/deployments/2#findings",
+                     "accepted Checkpoint on checkpoint:upload.scanned: 0 occurrences", "Accepted as intended by Pat: Retired the scanner",
+                 })
+        {
+            Assert.Contains(text, output);
+        }
+    }
+
+    [Fact]
     public void AddsTheVerdictToTheGithubActionsJobSummary()
     {
         var document = Documents.Verdict("closed", "failed");
