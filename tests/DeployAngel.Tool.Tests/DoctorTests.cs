@@ -371,4 +371,22 @@ public sealed class DoctorTests : CliTestBase
                         "      Check the app is running, and that DEPLOYANGEL_TOKEN is still set on its processes.", Output);
         Assert.Contains("· No deploys yet: your next deploy gets the first verdict", Output);
     }
+
+    [Fact]
+    public void WarnsWhenTheProjectHasAnOlderCopyOfDeployAngelsAgentInstructionsAndNotForTheCurrentOne()
+    {
+        var current = Installer.AgentInstructions("deployangel");
+        Root.Write("AGENTS.md", $"# Project\n\n{current}");
+        Doctor();
+        Assert.DoesNotContain("older copy", Output);
+
+        Root.Write("AGENTS.md", $"# Project\n\n{Installer.AgentsStart}\n## Production verification (DeployAngel)\nOld text.\n{Installer.AgentsEnd}\n");
+        Root.Write("CLAUDE.md", "Hand-written notes about DeployAngel, with no markers.\n");
+        Clear();
+        Doctor();
+
+        Assert.Contains("! AGENTS.md has an older copy of DeployAngel's agent instructions\n" +
+                        "      Run deployangel install agents to update it.", Output);
+        Assert.DoesNotContain("CLAUDE.md has", Output);
+    }
 }

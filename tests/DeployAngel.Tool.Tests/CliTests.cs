@@ -42,6 +42,16 @@ public abstract class CliTestBase : IDisposable
 public sealed class CliTests : CliTestBase
 {
     [Fact]
+    public void SaysAtTheStartOfASessionWhenTheProjectsAgentInstructionsAreOutOfDate()
+    {
+        Root.Write("AGENTS.md", $"{Installer.AgentsStart}\nOld text.\n{Installer.AgentsEnd}\n");
+        Run(new FakeClient(new[] { Documents.Verdict("closed", "verified") }), "status", "--format=text");
+
+        Assert.Contains("AGENTS.md has an older copy of DeployAngel's agent instructions; " +
+                        "run `deployangel install agents` to update", Stderr.ToString());
+    }
+
+    [Fact]
     public void MapsVerdictsToExitCodes()
     {
         foreach (var (verdict, code) in new[] { ("verified", 0), ("failed", 1), ("inconclusive", 2) })

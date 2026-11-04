@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using static DeployAngel.Tool.JsonValues;
 
 namespace DeployAngel.Tool;
@@ -46,6 +47,10 @@ internal sealed class Doctor
         (new[] { "DeployAngel.Hangfire", "Hangfire", "Hangfire.Core", "Hangfire.AspNetCore" }, "Hangfire's recurring jobs"),
     };
 
+    // The block `deployangel install agents` writes, from marker to marker.
+    private static readonly Regex InstructionsBlock = new(Regex.Escape(Installer.AgentsStart) + ".*?" + Regex.Escape(Installer.AgentsEnd),
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
     private static readonly string[] Months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
     private readonly string _root;
@@ -77,11 +82,40 @@ internal sealed class Doctor
                 checks.Add(ScheduleCheck());
                 checks.AddRange(server);
                 checks.Add(ReleaseCheck());
+                checks.Add(InstructionsCheck());
                 _checks = checks.Where(check => check is not null).Select(check => check!).ToList();
             }
             return _checks;
         }
     }
+
+    /// <summary>
+    /// Files whose DeployAngel block (between the markers <c>deployangel
+    /// install agents</c> writes) differs from this version's: agents keep
+    /// following the older copy until it's updated. Hand-written
+    /// instructions without the markers aren't checked.
+    /// </summary>
+    public static IReadOnlyList<string> StaleInstructions(string root)
+    {
+        try
+        {
+            var current = Installer.AgentInstructions(ProjectCommand.NameFor(root));
+            current = current.EndsWith('\n') ? current[..^1] : current;
+            return new[] { "AGENTS.md", "CLAUDE.md" }.Where(name =>
+            {
+                var path = Path.Combine(root, name);
+                var found = File.Exists(path) ? InstructionsBlock.Match(File.ReadAllText(path)) : null;
+                return found is { Success: true } && found.Value != current;
+            }).ToList();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    public static string StaleInstructionsNote(IReadOnlyList<string> files) =>
+        $"{string.Join(" and ", files)} {(files.Count == 1 ? "has" : "have")} an older copy of DeployAngel's agent instructions";
 
     public bool Failed => Checks.Any(check => check.Status == "error");
 
@@ -292,6 +326,17 @@ internal sealed class Doctor
                 "heroku labs:enable runtime-dyno-metadata && heroku labs:enable runtime-dyno-build-metadata");
         }
         return null;
+    }
+
+    private Check? InstructionsCheck()
+    {
+        var stale = StaleInstructions(_root);
+        if (stale.Count == 0)
+        {
+            return null;
+        }
+        return new Check("warn", StaleInstructionsNote(stale),
+            $"Run {ProjectCommand.NameFor(_root)} install agents to update {(stale.Count == 1 ? "it" : "them")}.");
     }
 
     private static Check AppCheck(JsonObject setup)

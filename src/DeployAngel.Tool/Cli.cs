@@ -235,7 +235,25 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
         {
             Error("timed out; verification is still in progress");
         }
+        if (status)
+        {
+            StaleInstructionsNote();
+        }
         return outcome.ExitCode;
+    }
+
+    /// <summary>
+    /// At the start of a session (<c>status</c>), where an agent reads it and
+    /// can update the instructions it's following.
+    /// </summary>
+    private void StaleInstructionsNote()
+    {
+        var stale = Tool.Doctor.StaleInstructions(_root);
+        if (stale.Count == 0)
+        {
+            return;
+        }
+        Error($"{Tool.Doctor.StaleInstructionsNote(stale)}; run `{ProjectCommand.NameFor(_root)} install agents` to update");
     }
 
     /// <summary>
