@@ -163,6 +163,22 @@ public sealed class CliTests : CliTestBase
     }
 
     [Fact]
+    public void MarksALateRegressionAPersonDismissedAsAFalseAlarm()
+    {
+        var document = Documents.Verdict("watching", "verified");
+        document["late_regressions"] = JsonNode.Parse("""
+            [{"summary": "P95 latency across the app: 70 ms in the same hours over the past week, 514 ms in the last hour on v42",
+              "dismissed": {"at": "2026-11-05T17:00:00Z", "by": "Pat", "note": "Busier dashboard"}},
+             {"summary": "POST /password_resets failed on first use since v42", "dismissed": null}]
+            """);
+        Run(new FakeClient(new[] { document }), "verify", "--format=text");
+
+        var output = Stdout.ToString();
+        Assert.Contains("514 ms in the last hour on v42 (dismissed as a false alarm by Pat: Busier dashboard)", output);
+        Assert.Contains("POST /password_resets failed on first use since v42\n", output);
+    }
+
+    [Fact]
     public void RendersAReadableSummary()
     {
         var document = Documents.Verdict("closed", "failed");

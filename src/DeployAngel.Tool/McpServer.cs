@@ -199,7 +199,8 @@ internal sealed class McpServer
                 new JsonObject { ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 50, ["default"] = 10 } }),
             Tool("get_exception", "Sanitized details and a representative stack trace (application frames, or library frames when there are none) for an exception fingerprint.",
                 new JsonObject { ["fingerprint"] = new JsonObject { ["type"] = "string" } }, "fingerprint"),
-            Tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover.",
+            Tool("list_late_regressions", "Failures found after a release was cleared, on paths the clearance did not cover. " +
+                "One with dismissed set was dismissed by a person as a false alarm, with their reason: it needs no action.",
                 new JsonObject
                 {
                     ["since"] = new JsonObject { ["type"] = "string", ["description"] = "ISO 8601 time" },

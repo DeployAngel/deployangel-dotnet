@@ -237,7 +237,7 @@ internal static class Formatter
             ("Critical flows", flows),
             ("Changed but not yet exercised", changed.Select(item => Text(Get(item, "key"))).ToList()),
             ("To clear sooner, exercise (deployangel plan for details)", ExercisableItems(document).Take(5).ToList()),
-            ("Late regressions", ItemsOf(Get(document, "late_regressions")).Select(late => Text(Get(late, "summary"))).ToList()),
+            ("Late regressions", ItemsOf(Get(document, "late_regressions")).Select(LateRegressionLine).ToList()),
             // A failed release's rollback target and where to look first
             // (servers from 2026-11-01 send them).
             ("Next steps", ItemsOf(Get(document, "next_steps")).Select(step => Text(Get(step, "text"))).ToList()),
@@ -498,5 +498,14 @@ internal static class Formatter
         return digits == 0
             ? decimal.Truncate(result).ToString(CultureInfo.InvariantCulture)
             : FloatText((double)result);
+    }
+
+    // Servers from 2026-11-05 say when a person dismissed one as a false alarm.
+    static string LateRegressionLine(JsonNode? late)
+    {
+        var summary = Text(Get(late, "summary"));
+        var dismissed = Get(late, "dismissed");
+        return dismissed is null ? summary
+            : $"{summary} (dismissed as a false alarm by {Text(Get(dismissed, "by"))}: {Text(Get(dismissed, "note"))})";
     }
 }
