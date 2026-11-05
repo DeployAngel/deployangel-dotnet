@@ -57,7 +57,12 @@ public sealed class DeployAngelOptions
 
     public TimeSpan FlushInterval { get; set; } = TimeSpan.FromSeconds(60);
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(5);
-    public int MaxQueuedPayloads { get; set; } = 10;
+    /// <summary>
+    /// Unsent minutes kept, gzipped, while DeployAngel can't be reached: an
+    /// hour, so an outage that long loses nothing. A lost minute leaves a gap
+    /// the cloud learns the app's normal traffic around.
+    /// </summary>
+    public int MaxQueuedPayloads { get; set; } = 60;
     public int MaxRoutes { get; set; } = 100;
 
     /// <summary>

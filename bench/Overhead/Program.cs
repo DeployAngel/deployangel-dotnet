@@ -90,7 +90,7 @@ var before = GC.GetTotalMemory(forceFullCollection: true);
 AgentProcess.Start(new DeployAngelOptions { Token = "bench", Enabled = true, Revision = "abc1234", FileDigests = false },
     "production", eager: false);
 agent = AgentProcess.Agent!;
-for (var m = 0; m < 10; m++)
+for (var m = 0; m < agent.Options.MaxQueuedPayloads; m++)
 {
     minute = 1_790_776_800 + m * 60;
     for (var r = 0; r < 150; r++) agent.RecordRequest($"GET /r{r}", 500, 3);

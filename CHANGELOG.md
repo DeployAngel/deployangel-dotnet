@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The agent keeps an hour of unsent minutes (60 payloads, up from 10) when
+  DeployAngel can't be reached, so an outage of up to an hour loses no
+  telemetry. A minute that is lost leaves a gap DeployAngel has to learn
+  the app's normal traffic around. Kept gzipped, a full hour holds 0.47 MB
+  with every list at its cap (`bench/Overhead`, which now fills the
+  configured buffer). `MaxQueuedPayloads` still sets it. Matches the Ruby
+  gem and the Python package.
+
 ## 0.1.8 (2026-11-04)
 
 - `deployangel doctor` warns when the project's AGENTS.md or CLAUDE.md has
