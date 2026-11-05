@@ -184,8 +184,8 @@ user data.
 `dotnet run -c Release --project bench/Overhead` measures this. On an Apple
 M-series laptop with .NET 10, the middleware adds about 1.2 µs to a request,
 recording a job takes about 0.4 µs, and with every route, job, checkpoint,
-and exception list at its cap the agent holds about 0.1 MB, including 10
-unsent minutes.
+and exception list at its cap the agent holds about 0.5 MB, including an
+hour (60) of unsent minutes.
 
 ## Configuration
 
