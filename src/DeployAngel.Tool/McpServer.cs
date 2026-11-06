@@ -49,10 +49,11 @@ internal sealed class McpServer
         "Only act on status \"exercisable\" or \"waiting_for_activity\"; for \"warm_up\" or\n" +
         "\"no_baseline\" nothing you run can clear it. Exercise routes marked mutating only with a test account\n" +
         "or after asking. Report what you ran with the plan's report_with command (deployangel check).\n" +
-        "A failing volume_drop or checkpoint_rate finding with an accept_url may be an intended change, such as\n" +
-        "a route or job you removed on purpose. You cannot accept it, and must not try: tell the user why you\n" +
-        "think it was intended, with your evidence, and give them the accept_url so a person decides. Until\n" +
-        "someone accepts it, the release is failed: never report it as success. A finding with status\n" +
+        "A failing volume_drop, checkpoint_rate, or p95_latency finding with an accept_url may be an intended\n" +
+        "change, such as a route or job you removed on purpose, or a page that now does more work.\n" +
+        "You cannot accept it, and must not try: tell the user why you think it was intended, with your\n" +
+        "evidence, and give them the accept_url so a person decides. Until someone accepts it, the release\n" +
+        "is failed: never report it as success. A finding with status\n" +
         "accepted was accepted as intended by the person in accepted_as_intended.\n";
 
     private const int ParseError = -32700;
