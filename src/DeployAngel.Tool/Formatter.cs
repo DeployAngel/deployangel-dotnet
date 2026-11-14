@@ -396,14 +396,18 @@ internal static class Formatter
 
     private static readonly Dictionary<string, string> Outlooks = new(StringComparer.Ordinal)
     {
-        ["normal_traffic"] = "normal traffic covers it", ["later_today"] = "runs later today",
-        ["rarely_used"] = "rarely used: a clearance won't cover it", ["unknown"] = "outlook unknown",
+        ["normal_traffic"] = "normal traffic covers it", ["scheduled"] = "scheduled: watched after clearance",
+        ["later_today"] = "runs later today", ["rarely_used"] = "rarely used: a clearance won't cover it", ["unknown"] = "outlook unknown",
     };
 
-    /// <summary>Production context, one block per route or job.</summary>
+    /// <summary>
+    /// Production context, one block per route or job. What each outlook means
+    /// is said once, after the items, not under every one.
+    /// </summary>
     public static string ProductionContext(JsonObject details)
     {
         var lines = new List<string>();
+        var explained = new List<(string Outlook, string? Note)>();
         foreach (var item in ItemsOf(Get(details, "items")))
         {
             var route = StringOf(Get(item, "kind")) == "route";
@@ -412,9 +416,9 @@ internal static class Formatter
             var failed = failures is "" or "0" ? "" : $", {failures} failed";
             lines.Add($"{(route ? "Route" : "Job")} {Text(Get(item, "key"))}: {Text(Get(item, "uses_last_7_days"))} " +
                       $"{(route ? "requests" : "runs")} in 7 days{failed} · {(Outlooks.TryGetValue(outlook, out var said) ? said : outlook)}");
-            if (outlook != "normal_traffic")
+            if (outlook != "normal_traffic" && explained.All(seen => seen.Outlook != outlook))
             {
-                lines.Add($"  {Text(Get(Get(item, "clearance"), "note"))}");
+                explained.Add((outlook, StringOf(Get(Get(item, "clearance"), "note"))));
             }
             if (Get(item, "pending_first_use") is JsonValue pending && pending.TryGetValue(out bool isPending) && isPending)
             {
@@ -435,6 +439,7 @@ internal static class Formatter
             lines.AddRange(ItemsOf(Get(item, "late_regressions")).Select(late =>
                 $"  Late regression in {Text(Get(late, "release"))}{(Get(late, "dismissed") is JsonObject ? " (dismissed)" : "")}: {Text(Get(late, "summary"))}"));
         }
+        lines.AddRange(explained.Where(seen => seen.Note is not null).Select(seen => seen.Note!));
         foreach (var file in ItemsOf(Get(details, "files")))
         {
             lines.AddRange(ItemsOf(Get(file, "exceptions")).Select(exception =>

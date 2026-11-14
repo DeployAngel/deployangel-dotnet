@@ -154,7 +154,16 @@ internal static class Documents
                     "clearance": {"outlook": "rarely_used", "note": "Rarely used: a clearance won't cover a change to it."},
                     "pending_first_use": false, "schedule": null, "critical_flows": ["refunds"],
                     "failed_releases": [{"release": "v39", "signal": "first_use_failure", "label": "First-use failure"}],
-                    "late_regressions": []}],
+                    "late_regressions": []},
+                   {"kind": "route", "key": "GET /refunds/{id}", "matched_by": ["release_metadata"], "files": ["Controllers/RefundsController.cs"],
+                    "uses_last_7_days": 0, "failures_last_7_days": 0,
+                    "clearance": {"outlook": "rarely_used", "note": "Rarely used: a clearance won't cover a change to it."},
+                    "pending_first_use": true, "schedule": null, "critical_flows": [], "failed_releases": [], "late_regressions": []},
+                   {"kind": "job_class", "key": "RefundJob", "matched_by": ["release_metadata"], "files": [],
+                    "uses_last_7_days": 7, "failures_last_7_days": 0,
+                    "clearance": {"outlook": "scheduled", "note": "Runs on its declared schedule, next at 2026-11-15T03:00:00Z."},
+                    "pending_first_use": false, "critical_flows": [], "failed_releases": [], "late_regressions": [],
+                    "schedule": {"schedule": "at 3am every day", "next_at": "2026-11-15T03:00:00Z", "status": "ran"}}],
          "truncated": false, "notes": ["Uses are counted over the last 7 days."]}
         """)!;
 

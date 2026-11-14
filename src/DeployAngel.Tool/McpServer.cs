@@ -214,7 +214,7 @@ internal sealed class McpServer
                 }),
             Tool("get_production_context", "What production does with code before you change it: the routes and jobs the given " +
                 "files serve, how often production ran them in the last 7 days and how many failed, whether a release's clearance " +
-                "would cover a change to them (clearance.outlook: normal_traffic, later_today, rarely_used, or unknown), their " +
+                "would cover a change to them (clearance.outlook: normal_traffic, scheduled, later_today, rarely_used, or unknown), their " +
                 "schedules and critical flows, and failed releases and late regressions on them in the last 90 days. " +
                 "Files it can't map are listed in unmapped_files; that doesn't mean they're unused.",
                 new JsonObject

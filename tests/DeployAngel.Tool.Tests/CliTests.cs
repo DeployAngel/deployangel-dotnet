@@ -66,10 +66,13 @@ public sealed class CliTests : CliTestBase
                  {
                      "Route POST /refunds: 3 requests in 7 days, 1 failed · rarely used: a clearance won't cover it", "  Critical flows: refunds",
                      "  Failed v39: First-use failure", "Unmapped (not known to be unused): Money.cs", "Note: Uses are counted over the last 7 days.",
+                     "Job RefundJob: 7 runs in 7 days · scheduled: watched after clearance",
+                     "  Scheduled at 3am every day, next 2026-11-15T03:00:00Z (ran)", "Runs on its declared schedule, next at 2026-11-15T03:00:00Z.",
                  })
         {
             Assert.Contains(line, output);
         }
+        Assert.Single(output.Split('\n'), line => line == "Rarely used: a clearance won't cover a change to it.");
         Assert.Equal(ExitCodes.Usage, Run(client, "context"));
     }
 
