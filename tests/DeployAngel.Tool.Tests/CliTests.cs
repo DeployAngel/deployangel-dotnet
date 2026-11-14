@@ -52,6 +52,28 @@ public sealed class CliTests : CliTestBase
     }
 
     [Fact]
+    public void SaysWhatProductionDoesWithCodeBeforeChangingIt()
+    {
+        var client = new FakeClient();
+        Assert.Equal(0, Run(client, "context", "Controllers/RefundsController.cs", "--job", "RefundJob", "Money.cs", "--format=text"));
+
+        Assert.Equal(new Call("production_context", new JsonObject
+        {
+            ["files"] = new JsonArray("Controllers/RefundsController.cs", "Money.cs"), ["routes"] = new JsonArray(), ["job_classes"] = new JsonArray("RefundJob"),
+        }), client.Calls[^1]);
+        var output = Stdout.ToString();
+        foreach (var line in new[]
+                 {
+                     "Route POST /refunds: 3 requests in 7 days, 1 failed · rarely used: a clearance won't cover it", "  Critical flows: refunds",
+                     "  Failed v39: First-use failure", "Unmapped (not known to be unused): Money.cs", "Note: Uses are counted over the last 7 days.",
+                 })
+        {
+            Assert.Contains(line, output);
+        }
+        Assert.Equal(ExitCodes.Usage, Run(client, "context"));
+    }
+
+    [Fact]
     public void MapsVerdictsToExitCodes()
     {
         foreach (var (verdict, code) in new[] { ("verified", 0), ("failed", 1), ("inconclusive", 2) })

@@ -34,6 +34,8 @@ internal sealed class Cli
              requests to production         [--param=NAME=VALUE] [--header=""Name: value""]
                                             [--max-requests=200] [--dry-run]
   exception  Details for a fingerprint      deployangel exception FINGERPRINT
+  context    What production does with      deployangel context FILE... [--route=""POST /x""] [--job=Job]
+             code, before you change it     [--format=text|json]
   check      Report a smoke test result     --name=NAME --status=pass|fail [--covers=a,b]
                                             [--commit=SHA | --deployment=ID] [--details-url=URL]
   install    Add a Kamal deploy hook,       deployangel install kamal
@@ -126,6 +128,8 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
                     return Exercise();
                 case "exception":
                     return ExceptionDetails();
+                case "context":
+                    return Context();
                 case "check":
                     return Check();
                 case "install":
@@ -401,6 +405,52 @@ Exit codes: 0 verified, 1 failed, 2 inconclusive, 3 still in progress / timed ou
         var options = Parse(new OptionParser().String("--format", choices: new[] { "text", "json" }));
         var details = Client().Exception(fingerprint);
         Output(details, options["format"], () => Formatter.Exception(details));
+        return 0;
+    }
+
+    /// <summary>What production does with some code, before changing it (spec §27, Production context).</summary>
+    private int Context()
+    {
+        // Files are the arguments that aren't options or an option's value.
+        var files = new List<string>();
+        var rest = new List<string>();
+        for (var index = 0; index < _argv.Count; index++)
+        {
+            var arg = _argv[index];
+            if (arg is "--route" or "--job" or "--format" && index + 1 < _argv.Count)
+            {
+                rest.Add(arg);
+                rest.Add(_argv[++index]);
+            }
+            else if (arg.StartsWith('-'))
+            {
+                rest.Add(arg);
+            }
+            else
+            {
+                files.Add(arg);
+            }
+        }
+        _argv.Clear();
+        _argv.AddRange(rest);
+        var options = Parse(new OptionParser().List("--route", "routes").List("--job", "job_classes")
+            .String("--format", choices: new[] { "text", "json" }));
+        var (routes, jobClasses) = (options.List("routes"), options.List("job_classes"));
+        if (files.Count == 0 && routes.Count == 0 && jobClasses.Count == 0)
+        {
+            return UsageError("context needs files, --route, or --job, like `deployangel context Controllers/RefundsController.cs`");
+        }
+        JsonObject details;
+        try
+        {
+            details = Client().ProductionContext(files, routes, jobClasses);
+        }
+        catch (NotFoundException)
+        {
+            Error("this DeployAngel server doesn't offer production context yet");
+            return ExitCodes.Usage;
+        }
+        Output(details, options["format"], () => Formatter.ProductionContext(details));
         return 0;
     }
 

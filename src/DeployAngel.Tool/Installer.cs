@@ -124,6 +124,12 @@ verdict: call the `wait_for_verification` MCP tool with the commit and
   and `list_late_regressions` (or run `{command} status`). If a recent release
   failed, isn't cleared yet, or has a late regression, mention it before other
   work.
+- Before changing code that serves requests or runs as a job: call
+  `get_production_context` with the files you plan to change (or run
+  `{command} context <files>`). If an item's clearance outlook is
+  `rarely_used` or `later_today`, a clearance won't cover your change soon
+  after deploying: say so, and plan to exercise it or report a check that
+  covers it. Files in `unmapped_files` aren't known to be unused.
 {AgentsEnd}
 ".Replace("\r\n", "\n", StringComparison.Ordinal);
 

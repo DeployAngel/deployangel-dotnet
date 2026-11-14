@@ -60,6 +60,7 @@ public sealed class McpTests
         {
             ["get_verification"] = new(), ["wait_for_verification"] = new() { ["timeout_seconds"] = 1 }, ["get_exercise_plan"] = new(),
             ["list_deployments"] = new(), ["get_exception"] = new() { ["fingerprint"] = "abc" }, ["list_late_regressions"] = new(),
+            ["get_production_context"] = new() { ["files"] = new JsonArray("Controllers/RefundsController.cs") },
             ["register_deployment"] = new() { ["commit"] = "abc1234" },
         };
         Assert.Equal(calls.Keys.OrderBy(name => name, StringComparer.Ordinal),
@@ -71,6 +72,33 @@ public sealed class McpTests
         }
         var listed = ResultOf(_server, "tools/call", ToolCall("list_deployments"))["structuredContent"]!;
         Assert.Equal("""{"deployments":[{"id":42}]}""", listed.ToJsonString());
+    }
+
+    [Fact]
+    public void SaysWhatProductionDoesWithCodeBeforeAnAgentChangesIt()
+    {
+        var result = ResultOf(_server, "tools/call", ToolCall("get_production_context", new JsonObject
+        {
+            ["files"] = new JsonArray("Controllers/RefundsController.cs", ""), ["routes"] = new JsonArray("POST /refunds"),
+        }));
+        Assert.Equal("rarely_used", (string?)result["structuredContent"]!["items"]![0]!["clearance"]!["outlook"]);
+        Assert.Equal(new Call("production_context", new JsonObject
+        {
+            ["files"] = new JsonArray("Controllers/RefundsController.cs"), ["routes"] = new JsonArray("POST /refunds"), ["job_classes"] = new JsonArray(),
+        }), _fake.Calls[^1]);
+        var instructions = (string)ResultOf(_server, "initialize")["instructions"]!;
+        Assert.Contains("get_production_context", instructions);
+        Assert.Contains("never take that to mean they're unused", instructions);
+        Assert.Equal("give files, routes, or job_classes",
+            (string?)Request(_server, "tools/call", ToolCall("get_production_context"))["error"]!["message"]);
+    }
+
+    [Fact]
+    public void SaysWhenTheServerDoesntOfferProductionContextYet()
+    {
+        _fake.ProductionContextError = new NotFoundException("not found");
+        var result = ResultOf(_server, "tools/call", ToolCall("get_production_context", new JsonObject { ["files"] = new JsonArray("Models/Order.cs") }));
+        Assert.Equal("This DeployAngel server doesn't offer production context yet.", (string?)result["structuredContent"]!["note"]);
     }
 
     [Fact]

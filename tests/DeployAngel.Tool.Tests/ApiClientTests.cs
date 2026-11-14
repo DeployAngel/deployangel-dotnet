@@ -121,6 +121,15 @@ public sealed class ApiClientTests
     }
 
     [Fact]
+    public void AsksForProductionContextWithRepeatedParameters()
+    {
+        _api.Routes["/api/v1/production_context"] = (200, "{\"items\": []}");
+        Client().ProductionContext(new[] { "Controllers/A.cs", "Jobs/B.cs" }, new[] { "POST /refunds" }, Array.Empty<string>());
+        Assert.Equal("/api/v1/production_context?files%5B%5D=Controllers%2FA.cs&files%5B%5D=Jobs%2FB.cs&routes%5B%5D=POST+%2Frefunds",
+            _api.Requests[^1].PathAndQuery);
+    }
+
+    [Fact]
     public void QuotesQueryValuesAsPythonsUrlencodeDoes()
     {
         _api.Routes["/api/v1/late_regressions"] = (200, """{"late_regressions": []}""");

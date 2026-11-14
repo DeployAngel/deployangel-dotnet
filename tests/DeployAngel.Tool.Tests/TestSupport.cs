@@ -80,6 +80,24 @@ internal class FakeClient : IApiClient
 
     public JsonArray LateRegressions(string? since = null, int? limit = null) => new();
 
+    /// <summary>Throws when set, as a server without production context does.</summary>
+    public Exception? ProductionContextError { get; set; }
+
+    public JsonObject ProductionContext(IReadOnlyList<string> files, IReadOnlyList<string> routes, IReadOnlyList<string> jobClasses)
+    {
+        Calls.Add(new Call("production_context", new JsonObject
+        {
+            ["files"] = new JsonArray(files.Select(file => (JsonNode?)file).ToArray()),
+            ["routes"] = new JsonArray(routes.Select(route => (JsonNode?)route).ToArray()),
+            ["job_classes"] = new JsonArray(jobClasses.Select(job => (JsonNode?)job).ToArray()),
+        }));
+        if (ProductionContextError is not null)
+        {
+            throw ProductionContextError;
+        }
+        return Documents.ProductionContext();
+    }
+
     public JsonObject Verification(string deploymentId, bool allFindings = false)
     {
         Calls.Add(new Call("verification", new JsonObject { ["id"] = deploymentId }));
@@ -125,6 +143,21 @@ internal class FakeClient : IApiClient
 
 internal static class Documents
 {
+    /// <summary>Production context as the server returns it for a refunds controller.</summary>
+    public static JsonObject ProductionContext() => (JsonObject)JsonNode.Parse("""
+        {"app": "shop", "release": "v41",
+         "files": [{"path": "Controllers/RefundsController.cs", "items": ["route:POST /refunds"], "exceptions": []},
+                   {"path": "Money.cs", "items": [], "exceptions": []}],
+         "unmapped_files": ["Money.cs"],
+         "items": [{"kind": "route", "key": "POST /refunds", "matched_by": ["release_metadata"], "files": ["Controllers/RefundsController.cs"],
+                    "uses_last_7_days": 3, "failures_last_7_days": 1,
+                    "clearance": {"outlook": "rarely_used", "note": "Rarely used: a clearance won't cover a change to it."},
+                    "pending_first_use": false, "schedule": null, "critical_flows": ["refunds"],
+                    "failed_releases": [{"release": "v39", "signal": "first_use_failure", "label": "First-use failure"}],
+                    "late_regressions": []}],
+         "truncated": false, "notes": ["Uses are counted over the last 7 days."]}
+        """)!;
+
     public static JsonObject Verdict(string state, string? verdict = null, JsonObject? initialCheck = null, int poll = 60) => new()
     {
         ["schema_version"] = 1,

@@ -49,6 +49,9 @@ internal interface IApiClient
 
     JsonArray LateRegressions(string? since = null, int? limit = null);
 
+    /// <summary>What production does with some code, before a coding agent changes it (spec §27, Production context).</summary>
+    JsonObject ProductionContext(IReadOnlyList<string> files, IReadOnlyList<string> routes, IReadOnlyList<string> jobClasses);
+
     JsonObject Verification(string deploymentId, bool allFindings = false);
 
     /// <summary>The app's token and a "CI deploys" token, for a one-time setup code.</summary>
@@ -106,6 +109,11 @@ internal sealed class ApiClient : IApiClient, IDisposable
 
     public JsonArray LateRegressions(string? since = null, int? limit = null) =>
         ArrayIn(Get("/api/v1/late_regressions", ("since", since), ("limit", Number(limit))), "late_regressions");
+
+    public JsonObject ProductionContext(IReadOnlyList<string> files, IReadOnlyList<string> routes, IReadOnlyList<string> jobClasses) =>
+        ObjectFrom(Get("/api/v1/production_context", files.Select(file => ("files[]", (string?)file))
+            .Concat(routes.Select(route => ("routes[]", (string?)route)))
+            .Concat(jobClasses.Select(job => ("job_classes[]", (string?)job))).ToArray()));
 
     public JsonObject Verification(string deploymentId, bool allFindings = false) =>
         ObjectFrom(Get($"/api/v1/deployments/{deploymentId}/verification", ("findings", allFindings ? "all" : null)));

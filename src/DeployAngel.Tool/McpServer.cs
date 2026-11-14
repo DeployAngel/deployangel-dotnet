@@ -54,7 +54,12 @@ internal sealed class McpServer
         "You cannot accept it, and must not try: tell the user why you think it was intended, with your\n" +
         "evidence, and give them the accept_url so a person decides. Until someone accepts it, the release\n" +
         "is failed: never report it as success. A finding with status\n" +
-        "accepted was accepted as intended by the person in accepted_as_intended.\n";
+        "accepted was accepted as intended by the person in accepted_as_intended.\n" +
+        "Before changing code that serves requests or runs as a job, call get_production_context with the files\n" +
+        "you plan to change. It says which routes and jobs they serve and how often production runs them. If an\n" +
+        "item's clearance outlook is rarely_used or later_today, a clearance won't cover your change soon after\n" +
+        "deploying: tell the user, and plan to exercise it or report a check that covers it. unmapped_files are\n" +
+        "files DeployAngel can't map to routes or jobs: never take that to mean they're unused.\n";
 
     private const int ParseError = -32700;
     private const int InvalidRequest = -32600;
@@ -207,6 +212,27 @@ internal sealed class McpServer
                     ["since"] = new JsonObject { ["type"] = "string", ["description"] = "ISO 8601 time" },
                     ["limit"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 50, ["default"] = 10 },
                 }),
+            Tool("get_production_context", "What production does with code before you change it: the routes and jobs the given " +
+                "files serve, how often production ran them in the last 7 days and how many failed, whether a release's clearance " +
+                "would cover a change to them (clearance.outlook: normal_traffic, later_today, rarely_used, or unknown), their " +
+                "schedules and critical flows, and failed releases and late regressions on them in the last 90 days. " +
+                "Files it can't map are listed in unmapped_files; that doesn't mean they're unused.",
+                new JsonObject
+                {
+                    ["files"] = new JsonObject
+                    {
+                        ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" },
+                        ["description"] = "Repository-relative paths, e.g. Controllers/RefundsController.cs (up to 50).",
+                    },
+                    ["routes"] = new JsonObject
+                    {
+                        ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" }, ["description"] = "Route keys, e.g. \"POST /refunds\".",
+                    },
+                    ["job_classes"] = new JsonObject
+                    {
+                        ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" }, ["description"] = "Job class names, e.g. RefundJob.",
+                    },
+                }),
         };
         if (TokenScopes().Contains("deployments"))
         {
@@ -274,6 +300,9 @@ internal sealed class McpServer
                         ["late_regressions"] = Copy(_client.LateRegressions(since: since is null ? null : Text(since), limit: Limit(arguments))),
                     };
                     break;
+                case "get_production_context":
+                    content = ProductionContextContent(arguments);
+                    break;
                 case "register_deployment":
                     if (!TokenScopes().Contains("deployments"))
                     {
@@ -300,6 +329,26 @@ internal sealed class McpServer
             ["structuredContent"] = Copy(content),
             ["isError"] = false,
         };
+    }
+
+    private JsonObject ProductionContextContent(JsonObject arguments)
+    {
+        List<string> Strings(string key) =>
+            ItemsOf(Get(arguments, key)).Select(StringOf).Where(value => !string.IsNullOrEmpty(value)).Select(value => value!).ToList();
+
+        var (files, routes, jobClasses) = (Strings("files"), Strings("routes"), Strings("job_classes"));
+        if (files.Count == 0 && routes.Count == 0 && jobClasses.Count == 0)
+        {
+            throw new InvalidParamsException("give files, routes, or job_classes");
+        }
+        try
+        {
+            return _client.ProductionContext(files, routes, jobClasses);
+        }
+        catch (NotFoundException)
+        {
+            return new JsonObject { ["note"] = "This DeployAngel server doesn't offer production context yet." };
+        }
     }
 
     private JsonObject WaitContent(JsonObject arguments)

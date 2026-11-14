@@ -394,6 +394,66 @@ internal static class Formatter
         return "has no problems so far, not cleared yet";
     }
 
+    private static readonly Dictionary<string, string> Outlooks = new(StringComparer.Ordinal)
+    {
+        ["normal_traffic"] = "normal traffic covers it", ["later_today"] = "runs later today",
+        ["rarely_used"] = "rarely used: a clearance won't cover it", ["unknown"] = "outlook unknown",
+    };
+
+    /// <summary>Production context, one block per route or job.</summary>
+    public static string ProductionContext(JsonObject details)
+    {
+        var lines = new List<string>();
+        foreach (var item in ItemsOf(Get(details, "items")))
+        {
+            var route = StringOf(Get(item, "kind")) == "route";
+            var outlook = StringOf(Get(Get(item, "clearance"), "outlook")) ?? "";
+            var failures = Text(Get(item, "failures_last_7_days"));
+            var failed = failures is "" or "0" ? "" : $", {failures} failed";
+            lines.Add($"{(route ? "Route" : "Job")} {Text(Get(item, "key"))}: {Text(Get(item, "uses_last_7_days"))} " +
+                      $"{(route ? "requests" : "runs")} in 7 days{failed} · {(Outlooks.TryGetValue(outlook, out var said) ? said : outlook)}");
+            if (outlook != "normal_traffic")
+            {
+                lines.Add($"  {Text(Get(Get(item, "clearance"), "note"))}");
+            }
+            if (Get(item, "pending_first_use") is JsonValue pending && pending.TryGetValue(out bool isPending) && isPending)
+            {
+                lines.Add("  Pending first use since an earlier release");
+            }
+            if (Get(item, "schedule") is JsonObject schedule)
+            {
+                var next = StringOf(Get(schedule, "next_at")) is { } at ? $", next {at}" : "";
+                lines.Add($"  Scheduled {Text(Get(schedule, "schedule"))}{next} ({Text(Get(schedule, "status"))})");
+            }
+            var flows = ItemsOf(Get(item, "critical_flows")).Select(Text).ToList();
+            if (flows.Count > 0)
+            {
+                lines.Add($"  Critical flows: {string.Join(", ", flows)}");
+            }
+            lines.AddRange(ItemsOf(Get(item, "failed_releases")).Select(failedRelease =>
+                $"  Failed {Text(Get(failedRelease, "release"))}: {Text(Get(failedRelease, "label"))}"));
+            lines.AddRange(ItemsOf(Get(item, "late_regressions")).Select(late =>
+                $"  Late regression in {Text(Get(late, "release"))}{(Get(late, "dismissed") is JsonObject ? " (dismissed)" : "")}: {Text(Get(late, "summary"))}"));
+        }
+        foreach (var file in ItemsOf(Get(details, "files")))
+        {
+            lines.AddRange(ItemsOf(Get(file, "exceptions")).Select(exception =>
+                $"{Text(Get(file, "path"))}: {Text(Get(exception, "exception_class"))} in {Text(Get(exception, "top_frame"))}, " +
+                $"{Text(Get(exception, "occurrences_last_7_days"))} in 7 days (fingerprint {Text(Get(exception, "fingerprint"))})"));
+        }
+        var unmapped = ItemsOf(Get(details, "unmapped_files")).Select(Text).ToList();
+        if (unmapped.Count > 0)
+        {
+            lines.Add($"Unmapped (not known to be unused): {string.Join(", ", unmapped)}");
+        }
+        if (lines.Count == 0)
+        {
+            lines.Add("Nothing found for these.");
+        }
+        lines.AddRange(ItemsOf(Get(details, "notes")).Select(note => $"Note: {Text(note)}"));
+        return string.Join("\n", lines);
+    }
+
     public static string Exception(JsonObject details)
     {
         var lines = new List<string>

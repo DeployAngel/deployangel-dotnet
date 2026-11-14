@@ -404,6 +404,7 @@ deployangel check --name="smoke: signup" --status=pass --covers=registration
 deployangel install kamal                   # a Kamal post-deploy hook that registers each deploy
 deployangel install docker                  # bake the commit into the image as DEPLOYANGEL_REVISION
 deployangel install agents                  # set up Claude Code, Cursor, and Codex in this project
+deployangel context Controllers/RefundsController.cs  # what production does with code, before changing it
 deployangel doctor                          # check the setup
 ```
 
@@ -435,8 +436,15 @@ claude mcp add deployangel -- deployangel mcp
 
 The tools are `get_verification`, `wait_for_verification`,
 `get_exercise_plan`, `list_deployments`, `get_exception`,
-`list_late_regressions`, and `register_deployment` when the token allows it.
-None of them can change production.
+`list_late_regressions`, `get_production_context`, and `register_deployment`
+when the token allows it. None of them can change production.
+Before you or your agent change code, `deployangel context <files>` (or
+`get_production_context`) says what production does with it: the routes and
+jobs the files serve, how often production ran them in the last week and how
+many failed, whether a release's clearance would cover a change to them at
+this time of day, their schedules and critical flows, and failed releases and
+late regressions on them in the last 90 days. A file DeployAngel can't map is
+listed as unmapped, never as unused.
 
 The command and its output match the Ruby gem's and the Python package's
 `deployangel` command, so the docs and agent instructions for any of them
